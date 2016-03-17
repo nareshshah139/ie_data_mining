@@ -1,0 +1,41 @@
+---
+title: "WQ"
+author: "AB"
+date: "16 March 2016"
+output: html_document
+---
+
+##Load Packages and read the data
+```{r}
+library(xlsx)
+library(timeSeries)
+library(ggplot2)
+setwd("/home/ab/Documents/MBD/data_mining/assignment3/data")
+list.files()
+#wq = read.xlsx("wq.xlsx",sheetIndex = 1)
+wq = read.csv("wq.csv")
+str(wq)
+```
+
+
+```{r}
+ts.plot(wq$Temp...C.)
+ts.plot(wq$DO....sat..)
+ts.plot(wq$Gauge.Ht...m.)
+ts.plot(wq$Gauge.Ht...m.)
+
+unique(wq$New.Site.Code...post.Jun.2007.)
+
+ya = subset(wq,New.Site.Code...post.Jun.2007. =="YAYAR3331")
+
+ts.plot(ya$Temp...C.)
+ts.plot(ya$DO....sat..)
+ts.plot(ya$Gauge.Ht...m.)
+ts.plot(ya$pH)
+
+ts.plot(ya$Temp...C.)
+ts.plot(ya$Total.P..mg.L.as.P.)
+
+```
+
+
