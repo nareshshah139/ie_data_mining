@@ -4,38 +4,285 @@ author: "AB"
 date: "16 March 2016"
 output: html_document
 ---
-
+#####################################################################
 ##Load Packages and read the data
+#This data can be seen as time series data. For example, the temperature of the water has a strong seasonal component. However, there will also be a relationship between variables, not just time.
 ```{r}
 library(xlsx)
+library(GGally)
 library(timeSeries)
+library(tseries)
 library(ggplot2)
+library(stringr)
+library(cluster)
+library(dplyr)
 setwd("/home/ab/Documents/MBD/data_mining/assignment3/data")
 list.files()
 #wq = read.xlsx("wq.xlsx",sheetIndex = 1)
 wq = read.csv("wq.csv")
 str(wq)
+wq$Date = as.Date(wq$Date, format="%d/%m/%Y")
+wq$month =  as.numeric(format(wq$Date, "%m"))
+wq$year = as.numeric(format(wq$Date, "%Y"))
+
+```
+
+###Load the Rainfall data, fix dates and add moving averages
+```{r}
+
+rain = read.csv("rain.csv")
+rain$Date = paste(rain$Day,"/",rain$Month,"/",rain$Year)
+rain$Date = gsub(" ", "", rain$Date, fixed = TRUE)
+rain$Date = as.Date(rain$Date, format= "%d/%m/%Y")
+rain = subset(rain, Date > "2000-01-01")
+rain$ma3 = rollapply(rain$Rainfall.amount..millimetres., 3, mean,fill = NA)
+rain$ma5 = rollapply(rain$Rainfall.amount..millimetres., 5, mean,fill = NA)
+rain$ma10 = rollapply(rain$Rainfall.amount..millimetres., 10, mean,fill = NA)
+```
+
+#####################################################################
+##The number component of the New Site Code field represents how far the site is from the origin of the stream. This is important because water quality is assumed to be better the at its origin. This is not always the case but it is true for the Melbourne Water area. Many rivers originate in closed catchments. Closed catchments are near natural environments, they are void of human interfearence. Therefore, their water quality is beleived to be the ideal state.
+```{r}
+regexp <- "[[:digit:]]+"
+wq$distance = as.numeric(str_extract(wq$New.Site.Code...post.Jun.2007., regexp))
+```
+
+#####################################################################
+##Subset for the Yarra
+For the moment, we are only interested in exploring the data for the Yarra River. The Yarra is the main River in Melbourne, is the most politically sensitive and the most valued by the Melbourne Community. So it makes a logical sense to start with the Yarra. Any analysis done on the Yarra can also be replicated on other river systems.
+
+Sites on the Yarra river can be obtained from the new_site_code variable. Yarra sites are prefixed with "YA".  
+```{r}
+ya = wq[grep("^YA", wq$New.Site.Code...post.Jun.2007.),]
+#Now we remove the remaining factors
+ya$New.Site.Code...post.Jun.2007. = factor(ya$New.Site.Code...post.Jun.2007.)
 ```
 
 
+###############################################################
+### Exploritory Data Analysis - Univariate Analysis
+How many observations per site
 ```{r}
-ts.plot(wq$Temp...C.)
-ts.plot(wq$DO....sat..)
-ts.plot(wq$Gauge.Ht...m.)
-ts.plot(wq$Gauge.Ht...m.)
+plot(ya$New.Site.Code...post.Jun.2007.)
+```
 
-unique(wq$New.Site.Code...post.Jun.2007.)
+Histogram of Temperature
+We see the data is a little left skewed but we also see a second hump.
+```{r}
+qplot(y=ya$Temp...C., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Temp...C.)) + geom_density()
+ggplot(ya, aes(x=Temp...C., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~month)
+```
 
-ya = subset(wq,New.Site.Code...post.Jun.2007. =="YAYAR3331")
+#Histograms of Dissolved Oxygen 
+We see that the data is fairly normal. Not many outliers
+```{r}
+qplot(y=ya$DO....sat.., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=DO....sat..)) + geom_density()
+ggplot(ya, aes(x=DO....sat.., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=DO....sat..)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+```
 
-ts.plot(ya$Temp...C.)
-ts.plot(ya$DO....sat..)
-ts.plot(ya$Gauge.Ht...m.)
-ts.plot(ya$pH)
+#Histograms of Electric Conductivity (often used to measure Salt) 
+We see that the data is extremely right skewed. There are many outliers.
+There will have to be managed.
+```{r}
+qplot(y=ya$EC..uS.cm., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=EC..uS.cm.)) + geom_density()
+ggplot(ya, aes(x=EC..uS.cm., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=EC..uS.cm.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 
-ts.plot(ya$Temp...C.)
+ts.plot(ya$EC..uS.cm.)
+ts.plot(diff(ya$EC..uS.cm.))
+
+```
+
+#Histograms of pH
+PH looks to be very normal
+```{r}
+qplot(y=ya$pH, x= 1, geom = "boxplot")
+ggplot(ya, aes(x=pH)) + geom_density()
+ggplot(ya, aes(x=pH, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=pH)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+```
+
+#Histograms of Turbulance (the amount of particles in the water)
+PH looks to be very right skewed. With many outliers.
+```{r}
+qplot(y=ya$Turb...NTU., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Turb...NTU.)) + geom_density()
+ggplot(ya, aes(x=Turb...NTU., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Turb...NTU.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Turb...NTU.)
+ts.plot(diff(ya$Turb...NTU.))
+```
+
+#Histograms of Suspended Solids (the amount of particles in the water)
+PH looks to be very right skewed. With many outliers.
+```{r}
+qplot(y=ya$Susp..Solids..mg.L., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density()
+ggplot(ya, aes(x=Susp..Solids..mg.L., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Susp..Solids..mg.L.)
+ts.plot(diff(ya$Susp..Solids..mg.L.))
+adf.test(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+acf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+pacf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+```
+
+#Histograms of Nitrogen
+PH looks to be very right skewed. With many outliers.
+```{r}
+qplot(y=ya$Total.N, x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.N)) + geom_density()
+ggplot(ya, aes(x=Total.N, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Total.N)
+ts.plot(diff(ya$Total.N))
+adf.test(ya[complete.cases(ya$Total.N),]$Total.N)
+acf(ya[complete.cases(ya$Total.N),]$Total.N)
+pacf(ya[complete.cases(ya$Total.N),]$Total.N)
+
+```
+
+#Histograms of Phospherous
+PH looks to be very right skewed. With many outliers.
+```{r}
+qplot(y=ya$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density()
+ggplot(ya, aes(x=Total.P..mg.L.as.P., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
 ts.plot(ya$Total.P..mg.L.as.P.)
+ts.plot(diff(ya$Total.P..mg.L.as.P.))
+adf.test(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+acf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+pacf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+```
 
+###########################################################
+Let's remove outliers and check the impact of doing this on N and P.
+We see a more normal distribution
+```{r}
+n_upper_limit = quantile(ya$Total.N, na.rm=T)[4] + 1.5*IQR(ya$Total.N,na.rm=T)
+p_upper_limit = quantile(ya$Total.P..mg.L.as.P., na.rm=T)[4] + 1.5*IQR(ya$Total.P..mg.L.as.P.,na.rm=T)
+
+ya_n_no = subset(ya, Total.N <n_upper_limit) 
+ya_p_no = subset(ya, Total.P..mg.L.as.P. < p_upper_limit) 
+ya_np_no = subset(ya, Total.N < n_upper_limit & Total.P..mg.L.as.P. < p_upper_limit) 
+
+qplot(y=ya_n_no$Total.N, x= 1, geom = "boxplot")
+ggplot(ya_n_no, aes(x=Total.N)) + geom_density()
+ggplot(ya_n_no, aes(x=Total.N, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya_n_no, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+qplot(y=ya_p_no$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
+ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P.)) + geom_density()
+ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+```
+
+########################################################
+Let's not 
+```{r}
+dim(ya)
+dim(rain)
+ya$Date
+rain$date
+
+aa = merge(ya,rain,by = "Date" )
+bb = merge(wq,rain,by = "Date" )
+
+head(aa,20)
+
+plot(rain$Date,rain$Rainfall.amount..millimetres.)
+hist(rain$Month)
+min(rain$Date)
+str(rain)
+
+
+cor(aa$ma3, aa$Turb...NTU., use="complete.obs", method = "pearson")
+cor(aa$ma5, aa$Turb...NTU., use="complete.obs", method = "pearson")
+cor(aa$ma10, aa$Turb...NTU., use="complete.obs", method = "pearson")
+
+cor(aa$ma3, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(aa$ma5, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(aa$ma10, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+
+cor(bb$ma3, bb$Turb...NTU., use="complete.obs", method = "pearson")
+cor(bb$ma5, bb$Turb...NTU., use="complete.obs", method = "pearson")
+cor(bb$ma10, bb$Turb...NTU., use="complete.obs", method = "pearson")
+
+cor(bb$ma3, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(bb$ma5, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(bb$ma10, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+
+cor(aa$ma3, aa$Total.N, use="complete.obs", method = "spearman")
+cor(aa$ma5, aa$Total.N, use="complete.obs", method = "spearman")
+cor(aa$ma10, aa$Total.N, use="complete.obs", method = "spearman")
+
+cor(aa$ma3, aa$E..coli..MF., use="complete.obs", method = "spearman")
+cor(aa$ma5, aa$E..coli..MF., use="complete.obs", method = "spearman")
+cor(aa$ma10, aa$E..coli..MF., use="complete.obs", method = "spearman")
+
+plot(aa$Date,aa$Rainfall.amount..millimetres., type='l', ylim = c(0,20))
+lines(aa$Date,aa$Turb...NTU.)
+```
+
+
+###Correlations
+```{r}
+#ggpairs(ya[,c(11,12,13,14,15,20,22,24,25:31,33)])
+
+names(ya[,c(11,12,13,14,15,20,22,24,25:31,33)])
+names(ya)
+
+cor(wq$Turb...NTU., wq$distance, use="complete.obs", method = "spearman")
+cor(wq$Susp..Solids..mg.L., wq$distance, use="complete.obs", method = "spearman")
+cor(wq$Total.N, wq$distance, use="complete.obs", method = "spearman")
+cor(wq$Total.P..mg.L.as.P., wq$distance, use="complete.obs", method = "spearman")
+
+cor(wq$Total.N, wq$Total.P..mg.L.as.P., use="complete.obs", method = "spearman")
+
+
+
+cor(wq$Total.N, wq$Total.P..mg.L.as.P., use="complete.obs", method = "spearman")
+
+
+
+plot(wq$New.Site.Code...post.Jun.2007.,wq$distance)
+
+```
+
+
+
+```{r}
+names(ya[,c(11,12,13,14,15,20)])
+
+kk = ya[,c(11,12,13,14,15,20)]
+kk = na.omit(kk)
+
+k = kmeans(kk,3)
+plotcl(k)
+
+names(ya[,c(11,12,13,14,15,20)])
+
+kk = ya[,c(11,12,13,14,15,20)]
+kk = na.omit(kk)
+
+names(ya)
+dim(ya)
+
+head(ya)
+
+knn(train, test, ya, k = 3, prob=TRUE)
 ```
 
 
