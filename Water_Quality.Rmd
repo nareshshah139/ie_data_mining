@@ -1,0 +1,267 @@
+---
+title: "Water Quality"
+author: "Group E"
+date: "March 21, 2016"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(nlme)
+library(DAAG)
+library(MASS)
+getwd()
+setwd('/Users/nareshshah/Downloads')
+Water1 = read.csv2("~/Downloads/wq.csv", header=T, sep=",")
+summary(Water1)
+```
+
+```{r - Cleaning Data}
+Water1$Temp...C. = as.numeric(levels(Water1$Temp...C.)[Water1$Temp...C.])
+Water1$DO..mg.L. = as.numeric(levels(Water1$DO..mg.L.)[Water1$DO..mg.L.])
+Water1$DO....sat.. = as.numeric(levels(Water1$DO....sat..)[Water1$DO....sat..])
+Water1$EC..uS.cm.= as.numeric(levels(Water1$EC..uS.cm.)[Water1$EC..uS.cm.])
+Water1$pH = as.numeric(levels(Water1$pH)[Water1$pH])
+Water1$Turb...NTU. = as.numeric(levels(Water1$Turb...NTU.)[Water1$Turb...NTU.])
+Water1$Susp..Solids..mg.L. = as.numeric(levels(Water1$Susp..Solids..mg.L.)[Water1$Susp..Solids..mg.L.])
+Water1$NO3..mg.L.as.N. = as.numeric(levels(Water1$NO3..mg.L.as.N.)[Water1$NO3..mg.L.as.N.])
+Water1$NO2..mg.L.as.N. = as.numeric(levels(Water1$NO2..mg.L.as.N.)[Water1$NO2..mg.L.as.N.])
+Water1$NH3..mg.L. = as.numeric(levels(Water1$NH3..mg.L.)[Water1$NH3..mg.L.])
+Water1$TKN..mg.L.as.N. = as.numeric(levels(Water1$TKN..mg.L.as.N.)[Water1$TKN..mg.L.as.N.])
+Water1$Total.N = as.numeric(levels(Water1$Total.N)[Water1$Total.N])
+Water1$PO4.filt...mg.L.as.P. = as.numeric(levels(Water1$PO4.filt...mg.L.as.P.)[Water1$PO4.filt...mg.L.as.P.])
+Water1$Total.P..mg.L.as.P. = as.numeric(levels(Water1$Total.P..mg.L.as.P.)[Water1$Total.P..mg.L.as.P.])
+Water1$E..coli..MF. = as.numeric(Water1$E..coli..MF.)
+
+
+summary(Water1)
+  
+  
+#Removing all Rows with NA's
+Water1 = filter(Water1,!is.na(Water1$Temp...C.))
+Water1 = filter(Water1,!is.na(Water1$pH))
+Water1 = filter(Water1,!is.na(Water1$DO..mg.L.))
+Water1 = filter(Water1,!is.na(Water1$DO....sat..))
+Water1 = filter(Water1,!is.na(Water1$EC..uS.cm.))
+Water1 = filter(Water1,!is.na(Water1$Turb...NTU.))
+Water1 = filter(Water1,!is.na(Water1$Susp..Solids..mg.L.))
+Water1 = filter(Water1,!is.na(Water1$NO3..mg.L.as.N.))
+Water1 = filter(Water1,!is.na(Water1$NO2..mg.L.as.N.))
+Water1 = filter(Water1,!is.na(Water1$NH3..mg.L.))
+Water1 = filter(Water1,!is.na(Water1$TKN..mg.L.as.N.))
+Water1 = filter(Water1,!is.na(Water1$Total.N))
+Water1 = filter(Water1,!is.na(Water1$PO4.filt...mg.L.as.P.))
+Water1 = filter(Water1,!is.na(Water1$Total.P..mg.L.as.P.))
+Water1 = filter(Water1,!is.na(Water1$E..coli..MF.))
+
+
+hist(Water1$pH,breaks = 100)
+hist(Water1$Temp...C.,breaks = 100)
+hist(Water1$DO..mg.L.,breaks = 100)
+hist(Water1$DO....sat..,breaks = 100)
+hist(Water1$EC..uS.cm.,breaks = 100)
+hist(Water1$Turb...NTU.,breaks = 100)
+hist(Water1$Susp..Solids..mg.L.,breaks = 100)
+hist(Water1$NO3..mg.L.as.N.,breaks = 100)
+hist(Water1$NO2..mg.L.as.N.,breaks = 100)
+hist(Water1$NH3..mg.L.,breaks = 100)
+hist(Water1$TKN..mg.L.as.N.,breaks = 100)
+hist(Water1$Total.N,breaks = 100)
+hist(Water1$PO4.filt...mg.L.as.P.,breaks = 100)
+hist(Water1$Total.P..mg.L.as.P.,breaks = 100)
+hist(Water1$E..coli..MF.,breaks = 100)
+
+
+
+
+
+
+#We found outliers in the pH data of (70)
+Water1 = filter(Water1, Water1$pH < 14)
+hist(Water1$pH)
+#We found outliers in the Dissolved Oxygen in water (mg/L)
+IQR_DO_mgL = IQR(Water1$DO..mg.L.)
+Outlier_DO_mgL = mean(Water1$DO..mg.L.)+ 2.5*IQR(Water1$DO..mg.L.)
+Water1 = filter(Water1, Water1$DO..mg.L. < Outlier_DO_mgL)
+hist(Water1$DO..mg.L.)
+#We found outliers in the Dissolved Oxygen in water (% Sat)
+IQR_DO_mgL = IQR(Water1$DO....sat..)
+Outlier_DO_sat = mean(Water1$DO....sat..)+ 2.5*IQR(Water1$DO....sat..)
+Water1 = filter(Water1, Water1$DO....sat.. < Outlier_DO_sat)
+hist(Water1$DO....sat..)
+#We found outliers in Electrical Conductivity
+IQR_EC = IQR(Water1$EC..uS.cm.)
+Outlier_EC = mean(Water1$EC..uS.cm.)+ 2.5*IQR(Water1$EC..uS.cm.)
+Water1 = filter(Water1, Water1$EC..uS.cm. < Outlier_EC)
+hist(Water1$EC..uS.cm.)
+#We found outliers in Turbulence Data
+IQR_Tu = IQR(Water1$Turb...NTU.)
+Outlier_Tu = mean(Water1$Turb...NTU.)+ 2.5*IQR(Water1$Turb...NTU.)
+Water1 = filter(Water1, Water1$Turb...NTU. < Outlier_Tu)
+hist(Water1$Turb...NTU.)
+#We found outliers in Suspended Solids Data
+IQR_S = IQR(Water1$Susp..Solids..mg.L.)
+Outlier_S = mean(Water1$Susp..Solids..mg.L.)+ 2.5*IQR(Water1$Susp..Solids..mg.L.)
+Water1 = filter(Water1, Water1$Susp..Solids..mg.L. < Outlier_S)
+hist(Water1$Susp..Solids..mg.L.)
+#We found outliers in NO3 Data
+IQR_NO3 = IQR(Water1$NO3..mg.L.as.N.)
+Outlier_NO3 = mean(Water1$NO3..mg.L.as.N.)+ 2.5*IQR(Water1$NO3..mg.L.as.N.)
+Water1 = filter(Water1, Water1$NO3..mg.L.as.N. < Outlier_NO3)
+hist(Water1$NO3..mg.L.as.N.)
+#We found outliers in NO2 Data
+IQR_NO2 = IQR(Water1$NO2..mg.L.as.N.)
+Outlier_NO2 = mean(Water1$NO2..mg.L.as.N.)+ 2.5*IQR(Water1$NO2..mg.L.as.N.)
+Water1 = filter(Water1, Water1$NO2..mg.L.as.N. < Outlier_NO2)
+hist(Water1$NO2..mg.L.as.N.)
+#We found outliers in NH3 Data
+IQR_NH3 = IQR(Water1$NH3..mg.L.)
+Outlier_NH3 = mean(Water1$NH3..mg.L.)+ 2.5*IQR(Water1$NH3..mg.L.)
+Water1 = filter(Water1, Water1$NH3..mg.L. < Outlier_NH3)
+hist(Water1$NH3..mg.L.)
+#We found outliers in TKN Data
+IQR_TKN = IQR(Water1$TKN..mg.L.as.N.)
+Outlier_TKN = mean(Water1$TKN..mg.L.as.N.)+ 2.5*IQR(Water1$TKN..mg.L.as.N.)
+Water1 = filter(Water1, Water1$TKN..mg.L.as.N. < Outlier_TKN)
+hist(Water1$TKN..mg.L.as.N.)
+#We found outliers in Total N Data
+IQR_TN = IQR(Water1$Total.N)
+Outlier_TN = mean(Water1$Total.N)+ 2.5*IQR(Water1$Total.N)
+Water1 = filter(Water1, Water1$Total.N < Outlier_TN)
+hist(Water1$Total.N)
+#We found outliers in PO4 Data
+IQR_PO4 = IQR(Water1$PO4.filt...mg.L.as.P.)
+Outlier_PO4 = mean(Water1$PO4.filt...mg.L.as.P.)+ 2.5*IQR(Water1$PO4.filt...mg.L.as.P.)
+Water1 = filter(Water1, Water1$PO4.filt...mg.L.as.P. < Outlier_PO4)
+hist(Water1$Turb...NTU.)
+#We found outliers in Total P Data
+IQR_TP = IQR(Water1$Total.P..mg.L.as.P.)
+Outlier_TP = mean(Water1$Total.P..mg.L.as.P.)+ 2.5*IQR(Water1$Total.P..mg.L.as.P.)
+Water1 = filter(Water1, Water1$Total.P..mg.L.as.P. < Outlier_TP)
+hist(Water1$Total.P..mg.L.as.P.)
+#We found outliers in E Coli Data
+IQR_ECMF = IQR(Water1$E..coli..MF.)
+Outlier_ECMF = mean(Water1$E..coli..MF.)+ 2.5*IQR(Water1$E..coli..MF.)
+Water1 = filter(Water1, Water1$E..coli..MF. < Outlier_ECMF)
+hist(Water1$E..coli..MF.)
+
+
+
+
+
+
+summary(Water1)
+
+```
+
+
+
+
+
+```{r, echo=FALSE}
+#Yarra subset
+ya = Water1[grep("^YA", Water1$New.Site.Code...post.Jun.2007.),]
+#temperature EDA
+qplot(y=ya$Temp...C., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Temp...C.)) + geom_density()
+ggplot(ya, aes(x=Temp...C., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~month)
+#Oxygen EDA
+qplot(y=ya$DO....sat.., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=DO....sat..)) + geom_density()
+ggplot(ya, aes(x=DO....sat.., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=DO....sat..)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+#EC EDA
+qplot(y=ya$EC..uS.cm., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=EC..uS.cm.)) + geom_density()
+ggplot(ya, aes(x=EC..uS.cm., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=EC..uS.cm.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$EC..uS.cm.)
+ts.plot(diff(ya$EC..uS.cm.))
+#pH EDA
+qplot(y=ya$pH, x= 1, geom = "boxplot")
+ggplot(ya, aes(x=pH)) + geom_density()
+ggplot(ya, aes(x=pH, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=pH)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+#Turbulance EDA
+qplot(y=ya$Turb...NTU., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Turb...NTU.)) + geom_density()
+ggplot(ya, aes(x=Turb...NTU., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Turb...NTU.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Turb...NTU.)
+ts.plot(diff(ya$Turb...NTU.))
+
+#Suspended Solids EDA
+qplot(y=ya$Susp..Solids..mg.L., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density()
+ggplot(ya, aes(x=Susp..Solids..mg.L., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Susp..Solids..mg.L.)
+ts.plot(diff(ya$Susp..Solids..mg.L.))
+adf.test(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+acf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+pacf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
+
+#Nitrogen EDA
+qplot(y=ya$Total.N, x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.N)) + geom_density()
+ggplot(ya, aes(x=Total.N, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Total.N)
+ts.plot(diff(ya$Total.N))
+adf.test(ya[complete.cases(ya$Total.N),]$Total.N)
+acf(ya[complete.cases(ya$Total.N),]$Total.N)
+pacf(ya[complete.cases(ya$Total.N),]$Total.N)
+
+#Phosphorus EDA
+qplot(y=ya$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density()
+ggplot(ya, aes(x=Total.P..mg.L.as.P., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+
+ts.plot(ya$Total.P..mg.L.as.P.)
+ts.plot(diff(ya$Total.P..mg.L.as.P.))
+adf.test(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+acf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+pacf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+
+```
+
+```{r - Modeling Part 1}
+ya1 = ya%>%filter(is.na(ya$E..coli..MF.) == F)
+data_size = floor(0.8*nrow(ya))
+train_index = sample(seq_len(nrow(ya)),size = data_size)
+training_data = ya[train_index,]
+test_data = ya[-train_index,]
+
+fits1 = lm(E..coli..MF. ~ DO..mg.L.+DO....sat..+EC..uS.cm.+pH+Turb...NTU.+Susp..Solids..mg.L.+NO3..mg.L.as.N.+NO2..mg.L.as.N.+NH3..mg.L.+TKN..mg.L.as.N.+Total.N+PO4.filt...mg.L.as.P.+Total.P..mg.L.as.P., data = training_data)
+
+summary(fits1)
+
+fits2 =  lm(scale(E..coli..MF.) ~  New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.)+scale(Turb...NTU.^5)+scale(Susp..Solids..mg.L.)+scale(exp(Total.N))+scale(PO4.filt...mg.L.as.P.)+scale(Total.P..mg.L.as.P.^2)+scale(exp(pH)) + scale(Temp...C.), data = training_data)
+
+summary(fits2)
+
+fits3 =  lm(pH ~  New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.^2)+scale(Turb...NTU.^2)+scale(Susp..Solids..mg.L.)+scale(Total.N)+scale(Total.P..mg.L.as.P.), data = training_data)
+
+summary(fits3)
+
+fits4 = lm(Total.N ~  scale(training_data$NO3..mg.L.as.N.)+scale(training_data$NO2..mg.L.as.N.)+scale(training_data$NH3..mg.L.)+scale(training_data$TKN..mg.L.as.N.), data = training_data)
+
+#So it seems most of the nitrogen comes from ammonia or is explained by ammonia.
+summary(fits4)
+  
+fits = by(training_data,training_data[,'New.Site.Code...post.Jun.2007.'],function(x) lm(E..coli..MF. ~ Old.Site.Code...pre.Jun.2007.+ New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.^2)+scale(Turb...NTU.^2)+scale(Susp..Solids..mg.L.)+scale(PO4.filt...mg.L.as.P.)+scale(Total.P..mg.L.as.P.),data = x))
+```
+
