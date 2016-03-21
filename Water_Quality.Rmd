@@ -245,22 +245,60 @@ train_index = sample(seq_len(nrow(ya)),size = data_size)
 training_data = ya[train_index,]
 test_data = ya[-train_index,]
 
-fits1 = lm(E..coli..MF. ~ DO..mg.L.+DO....sat..+EC..uS.cm.+pH+Turb...NTU.+Susp..Solids..mg.L.+NO3..mg.L.as.N.+NO2..mg.L.as.N.+NH3..mg.L.+TKN..mg.L.as.N.+Total.N+PO4.filt...mg.L.as.P.+Total.P..mg.L.as.P., data = training_data)
+
+#First basic Linear Regression for E Coli MF Count
+fits1 = lm(E..coli..MF. ~ Temp...C.+DO..mg.L.+DO..mg.L.+DO....sat..+EC..uS.cm.+pH+Turb...NTU.+Susp..Solids..mg.L.+NO3..mg.L.as.N.+NO2..mg.L.as.N.+NH3..mg.L.+TKN..mg.L.as.N.+Total.N+PO4.filt...mg.L.as.P.+Total.P..mg.L.as.P., data = training_data)
 
 summary(fits1)
 
-fits2 =  lm(scale(E..coli..MF.) ~  New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.)+scale(Turb...NTU.^5)+scale(Susp..Solids..mg.L.)+scale(exp(Total.N))+scale(PO4.filt...mg.L.as.P.)+scale(Total.P..mg.L.as.P.^2)+scale(exp(pH)) + scale(Temp...C.), data = training_data)
+plot(E..coli..MF. ~ Temp...C.+DO..mg.L.+DO....sat..+EC..uS.cm.+pH+Turb...NTU.+Susp..Solids..mg.L.+NO3..mg.L.as.N.+NO2..mg.L.as.N.+NH3..mg.L.+TKN..mg.L.as.N.+Total.N+PO4.filt...mg.L.as.P.+Total.P..mg.L.as.P., data = training_data)
+
+# Plotting E Coli MF vs all the predictors to guess the shape of the predictors
+# E Coli seems to have a negative linear shape of correlations vs Temperature
+# E Coli seems to have a negative quadratic(parabolic) shape of correlations vs Dissolved Oxygen mg L
+# E Coli seems to have a negative quadratic(parabolic) shape of correlations vs Dissolved Oxygen (Sat)
+# E Coli seems to have a negative Exponent graph vs Electrical Conductivity
+# E Coli seems to have a negative quadratic shape of correlations vs pH
+# E Coli seems to have an unknown realtionship vs Turbulence
+# E Coli seems to have an unknown realtionship vs Suspended Solids
+# E Coli seems to have an unknown realtionship vs NO3
+# E Coli seems to have an unknown realtionship vs NO2
+# E Coli seems to have an unknown realtionship vs NH3
+# E Coli seems to have an unknown realtionship vs TKN
+# E Coli seems to have an unknown realtionship vs Total N
+# E Coli seems to have an negative exponent realtionship vs PO4
+# E Coli seems to have an unknown realtionship vs Total P
+# E Coli seems to have an unknown realtionship vs Turbulence
+
+# E Coli count does depend much on Total P, PO4, Suspended Solids
+# Adding site location as a factor to the regression model
+# Removing Turbulence,NO3,NO2,NH3,TKN,Total N,EC
+
+#Most of these models are non-normal, therefore we scale all of them
+
+
+fits2 =  lm( scale(E..coli..MF.) ~  New.Site.Code...post.Jun.2007.+ scale(PO4.filt...mg.L.as.P.)+ scale(Total.P..mg.L.as.P.)+ scale(Susp..Solids..mg.L.)+scale(Total.N)+ scale(Temp...C.)+scale(training_data$DO..mg.L.)+scale(training_data$DO....sat..), data = training_data)
 
 summary(fits2)
 
-fits3 =  lm(pH ~  New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.^2)+scale(Turb...NTU.^2)+scale(Susp..Solids..mg.L.)+scale(Total.N)+scale(Total.P..mg.L.as.P.), data = training_data)
+#Applying the expected transforms
+
+fits3 = lm(scale(E..coli..MF.) ~  New.Site.Code...post.Jun.2007.+ scale(exp(PO4.filt...mg.L.as.P.))+ scale(Total.P..mg.L.as.P.)+ scale(Susp..Solids..mg.L.)+scale(Total.N)+ scale(Temp...C.)+scale(training_data$DO..mg.L.^2)+scale(training_data$DO....sat..^2), data = training_data)
 
 summary(fits3)
 
-fits4 = lm(Total.N ~  scale(training_data$NO3..mg.L.as.N.)+scale(training_data$NO2..mg.L.as.N.)+scale(training_data$NH3..mg.L.)+scale(training_data$TKN..mg.L.as.N.), data = training_data)
+#What does pH of the water depend on? 
+
+fits4 =  lm(pH ~  New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.)+scale(Turb...NTU.^2)+scale(Susp..Solids..mg.L.)+scale(Total.N)+scale(Total.P..mg.L.as.P.), data = training_data)
+
+summary(fits4)
+
+#What contributes to the amount of ammonia in water?
+
+fits5 = lm(Total.N ~  scale(training_data$NO3..mg.L.as.N.)+scale(training_data$NO2..mg.L.as.N.)+scale(training_data$NH3..mg.L.)+scale(training_data$TKN..mg.L.as.N.), data = training_data)
 
 #So it seems most of the nitrogen comes from ammonia or is explained by ammonia.
-summary(fits4)
+summary(fits5)
   
 fits = by(training_data,training_data[,'New.Site.Code...post.Jun.2007.'],function(x) lm(E..coli..MF. ~ Old.Site.Code...pre.Jun.2007.+ New.Site.Code...post.Jun.2007.+ scale(EC..uS.cm.^2)+scale(Turb...NTU.^2)+scale(Susp..Solids..mg.L.)+scale(PO4.filt...mg.L.as.P.)+scale(Total.P..mg.L.as.P.),data = x))
 ```
