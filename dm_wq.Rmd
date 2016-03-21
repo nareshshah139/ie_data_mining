@@ -4,10 +4,18 @@ author: "AB"
 date: "16 March 2016"
 output: html_document
 ---
+#Introduction
+Over the past 200 years of European occupation, the river systems in and around the Melbourne city area have seen a major decline in water quality. For the majority of the past 200 years, Melbourne's river systems were used to transport human and industrial waste away from their source and into the sea. In the late 20th century, public sentiment about the role of rivers and waterways changed and billions of dollars have since been spent to improve water quality.
+
+The focus has been on improving the immediate risks to human health posed by poor water quality. Lowering nitrogen, phospherous and Escherichia coli has been prioritised. However, rivers are open and complex systems, and analysis of water quality data needs to be broad enough to cover this complexity while specific enough to be used by river restoration programs.  
+
 #####################################################################
-##Load Packages and read the data
-#This data can be seen as time series data. For example, the temperature of the water has a strong seasonal component. However, there will also be a relationship between variables, not just time.
-```{r}
+#Preparing the Data
+##Loading Packages and Reading the Data
+This data can be seen as time series data. For example, the temperature of the water has a strong seasonal component. However, there will also be a relationship between variables, not just time. We will focus this work on the relationship between each variable rather.
+
+We have subsetted the data to only include records after 2010. Fifteen years of data is more than enough for our purposes.
+```{r, echo = F, include=F}
 library(xlsx)
 library(GGally)
 library(timeSeries)
@@ -16,88 +24,141 @@ library(ggplot2)
 library(stringr)
 library(cluster)
 library(dplyr)
+library(UsingR)
+library(zoo)
+library(tree)
+library(randomForest)
 setwd("/home/ab/Documents/MBD/data_mining/assignment3/data")
-list.files()
-#wq = read.xlsx("wq.xlsx",sheetIndex = 1)
 wq = read.csv("wq.csv")
-str(wq)
+
+### Format and fix the dates
 wq$Date = as.Date(wq$Date, format="%d/%m/%Y")
 wq$month =  as.numeric(format(wq$Date, "%m"))
 wq$year = as.numeric(format(wq$Date, "%Y"))
 
-```
-
-###Load the Rainfall data, fix dates and add moving averages
-```{r}
-
+### Adding Rainfall Data
 rain = read.csv("rain.csv")
 rain$Date = paste(rain$Day,"/",rain$Month,"/",rain$Year)
 rain$Date = gsub(" ", "", rain$Date, fixed = TRUE)
 rain$Date = as.Date(rain$Date, format= "%d/%m/%Y")
 rain = subset(rain, Date > "2000-01-01")
-rain$ma3 = rollapply(rain$Rainfall.amount..millimetres., 3, mean,fill = NA)
-rain$ma5 = rollapply(rain$Rainfall.amount..millimetres., 5, mean,fill = NA)
-rain$ma10 = rollapply(rain$Rainfall.amount..millimetres., 10, mean,fill = NA)
+rain$ma2r = rollapply(rain$Rainfall.amount..millimetres., 2, mean,fill = NA)
+rain$ma3r = rollapply(rain$Rainfall.amount..millimetres., 3, mean,fill = NA)
+rain$ma5r = rollapply(rain$Rainfall.amount..millimetres., 5, mean,fill = NA)
+rain$ma10r = rollapply(rain$Rainfall.amount..millimetres., 10, mean,fill = NA)
+
+### Adding Sunshine Data
+sun = read.csv("sunshine.csv")
+sun$Date = paste(sun$Day,"/",sun$Month,"/",sun$Year)
+sun$Date = gsub(" ", "", sun$Date, fixed = TRUE)
+sun$Date = as.Date(sun$Date, format= "%d/%m/%Y")
+sun$ma2s = rollapply(sun$Daily.global.solar.exposure..MJ.m.m., 2, mean,fill = NA)
+sun$ma3s = rollapply(sun$Daily.global.solar.exposure..MJ.m.m., 3, mean,fill = NA)
+sun$ma5s = rollapply(sun$Daily.global.solar.exposure..MJ.m.m., 5, mean,fill = NA)
+sun$ma10s = rollapply(sun$Daily.global.solar.exposure..MJ.m.m., 10, mean,fill = NA)
+
+### Adding Temp Data
+temp = read.csv("temp.csv")
+temp$Date = paste(temp$Day,"/",temp$Month,"/",temp$Year)
+temp$Date = gsub(" ", "", temp$Date, fixed = TRUE)
+temp$Date = as.Date(temp$Date, format= "%d/%m/%Y")
+temp$ma2t = rollapply(temp$Maximum.temperature..Degree.C., 2, mean,fill = NA)
+temp$ma3t = rollapply(temp$Maximum.temperature..Degree.C., 3, mean,fill = NA)
+temp$ma5t = rollapply(temp$Maximum.temperature..Degree.C., 5, mean,fill = NA)
+temp$ma10t = rollapply(temp$Maximum.temperature..Degree.C., 10, mean,fill = NA)
+
+
+#This line merges rainfall into the water quality data. 
+wq = merge(wq,rain,by = "Date" )
+wq = merge(wq,sun,by = "Date" )
+wq = merge(wq,temp,by = "Date" )
 ```
 
+
 #####################################################################
-##The number component of the New Site Code field represents how far the site is from the origin of the stream. This is important because water quality is assumed to be better the at its origin. This is not always the case but it is true for the Melbourne Water area. Many rivers originate in closed catchments. Closed catchments are near natural environments, they are void of human interfearence. Therefore, their water quality is beleived to be the ideal state.
-```{r}
+##Extracting Features
+###Kilometers to Origin
+The numeric component of the New Site Code variable represents how far the site is from the origin of the stream. This is important because water quality is assumed to be better the at its origin. This is not always the case but it is often true for the Melbourne Water area where many rivers originate in closed catchments (near natural environments void of human interfearence). Therefore, their water quality is beleived to be ideal and this should be reflected in the data.
+```{r, echo=F}
 regexp <- "[[:digit:]]+"
 wq$distance = as.numeric(str_extract(wq$New.Site.Code...post.Jun.2007., regexp))
 ```
 
 #####################################################################
-##Subset for the Yarra
-For the moment, we are only interested in exploring the data for the Yarra River. The Yarra is the main River in Melbourne, is the most politically sensitive and the most valued by the Melbourne Community. So it makes a logical sense to start with the Yarra. Any analysis done on the Yarra can also be replicated on other river systems.
+###Subset for the Yarra
+For the moment, we are only interested in exploring the data for the Yarra River. The Yarra is the main River in Melbourne, is the most politically sensitive and the most valued by the Melbourne community. So it makes sense to start with the Yarra. Any analysis done on the Yarra can also be replicated on other river systems.
 
 Sites on the Yarra river can be obtained from the new_site_code variable. Yarra sites are prefixed with "YA".  
-```{r}
+```{r,echo=F, include=T}
 ya = wq[grep("^YA", wq$New.Site.Code...post.Jun.2007.),]
 #Now we remove the remaining factors
 ya$New.Site.Code...post.Jun.2007. = factor(ya$New.Site.Code...post.Jun.2007.)
 ```
 
 
-###############################################################
-### Exploritory Data Analysis - Univariate Analysis
-How many observations per site
+# Exploritory Data Analysis - Univariate Analysis
+### Observations per site
+We see that there is variability in the number of observations per site. Some sites have had more observations than others. This variability is caused by the different programs used to collect the data. It also reflects funding changes, with more sites used in times of budget expansion and fewer sites when budgets are cut. 
 ```{r}
-plot(ya$New.Site.Code...post.Jun.2007.)
+qplot(x = New.Site.Code...post.Jun.2007., data = ya, main = "Observation per Site - Yarra - 2000-2015", fill = I("light blue"))
 ```
 
-Histogram of Temperature
-We see the data is a little left skewed but we also see a second hump.
+
+##Nitrogen
+Total Nitrogen Levels are heavily right skewed. This is caused by outliers. We also see that this is the case for all sites on the Yarra River.
 ```{r}
-qplot(y=ya$Temp...C., x= 1, geom = "boxplot")
-ggplot(ya, aes(x=Temp...C.)) + geom_density()
-ggplot(ya, aes(x=Temp...C., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-ggplot(ya, aes(x=Temp...C.)) + geom_density() + facet_wrap(~month)
+qplot(y=ya$Total.N, x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.N)) + geom_density()
+ggplot(ya, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 ```
 
-#Histograms of Dissolved Oxygen 
+After removing outliers from the Total Nitrogen variable, we see a distribution that is similar to a poisson distribution.
+```{r}
+n_upper_limit = quantile(ya$Total.N, na.rm=T)[4] + 1.5*IQR(ya$Total.N,na.rm=T)
+ya_n_no = subset(ya, Total.N <n_upper_limit) 
+ggplot(ya_n_no, aes(x=Total.N)) + geom_density()
+```
+
+##Phospherous
+Total phospherous is also heavily right skewed. This is caused by outliers. We also see that this is the case for all sites on the Yarra River.
+```{r}
+qplot(y=ya$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density()
+ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+```
+
+After removing outliers from the Total Phospherous variable, we also see a distribution that is similar to a poisson distribution.
+```{r}
+p_upper_limit = quantile(ya$Total.P..mg.L.as.P., na.rm=T)[4] + 1.5*IQR(ya$Total.P..mg.L.as.P.,na.rm=T)
+ya_p_no = subset(ya, Total.P..mg.L.as.P. <p_upper_limit) 
+ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P.)) + geom_density()
+```
+
+##Dissolved Oxygen 
 We see that the data is fairly normal. Not many outliers
 ```{r}
 qplot(y=ya$DO....sat.., x= 1, geom = "boxplot")
 ggplot(ya, aes(x=DO....sat..)) + geom_density()
 ggplot(ya, aes(x=DO....sat.., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya, aes(x=DO....sat..)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 ```
 
-#Histograms of Electric Conductivity (often used to measure Salt) 
-We see that the data is extremely right skewed. There are many outliers.
-There will have to be managed.
+##Electric Conductivity (often used to measure Salt) 
+We see that the data is extremely right skewed. There are many outliers and this is happens for every site.
 ```{r}
 qplot(y=ya$EC..uS.cm., x= 1, geom = "boxplot")
 ggplot(ya, aes(x=EC..uS.cm.)) + geom_density()
-ggplot(ya, aes(x=EC..uS.cm., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
 ggplot(ya, aes(x=EC..uS.cm.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-
-ts.plot(ya$EC..uS.cm.)
-ts.plot(diff(ya$EC..uS.cm.))
-
 ```
+
+After removing outliers, we see that EC levels are different across the sites. This difference causes bumps in the histogram for all of the Yarra. 
+```{r}
+ec_upper_limit = quantile(ya$EC..uS.cm., na.rm=T)[4] + 1.5*IQR(ya$EC..uS.cm.,na.rm=T)
+ya_ec_no = subset(ya, EC..uS.cm. < ec_upper_limit) 
+ggplot(ya_ec_no, aes(x=EC..uS.cm.)) + geom_density()
+ggplot(ya_ec_no, aes(x=EC..uS.cm., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya_ec_no, aes(x=EC..uS.cm.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+```
+
 
 #Histograms of pH
 PH looks to be very normal
@@ -115,10 +176,18 @@ qplot(y=ya$Turb...NTU., x= 1, geom = "boxplot")
 ggplot(ya, aes(x=Turb...NTU.)) + geom_density()
 ggplot(ya, aes(x=Turb...NTU., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
 ggplot(ya, aes(x=Turb...NTU.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-
-ts.plot(ya$Turb...NTU.)
-ts.plot(diff(ya$Turb...NTU.))
 ```
+
+After removing outliers, we see that Turbulance levels are different across the sites.
+```{r}
+tu_upper_limit = quantile(ya$Turb...NTU., na.rm=T)[4] + 1.5*IQR(ya$Turb...NTU.,na.rm=T)
+ya_tu_no = subset(ya, Turb...NTU. < tu_upper_limit) 
+ggplot(ya_tu_no, aes(x=Turb...NTU.)) + geom_density()
+ggplot(ya_tu_no, aes(x=Turb...NTU., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya_tu_no, aes(x=Turb...NTU.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
+```
+
+
 
 #Histograms of Suspended Solids (the amount of particles in the water)
 PH looks to be very right skewed. With many outliers.
@@ -127,113 +196,59 @@ qplot(y=ya$Susp..Solids..mg.L., x= 1, geom = "boxplot")
 ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density()
 ggplot(ya, aes(x=Susp..Solids..mg.L., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
 ggplot(ya, aes(x=Susp..Solids..mg.L.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-
-ts.plot(ya$Susp..Solids..mg.L.)
-ts.plot(diff(ya$Susp..Solids..mg.L.))
-adf.test(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
-acf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
-pacf(ya[complete.cases(ya$Susp..Solids..mg.L.),]$Susp..Solids..mg.L.)
 ```
 
-#Histograms of Nitrogen
-PH looks to be very right skewed. With many outliers.
+
 ```{r}
-qplot(y=ya$Total.N, x= 1, geom = "boxplot")
-ggplot(ya, aes(x=Total.N)) + geom_density()
-ggplot(ya, aes(x=Total.N, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-
-ts.plot(ya$Total.N)
-ts.plot(diff(ya$Total.N))
-adf.test(ya[complete.cases(ya$Total.N),]$Total.N)
-acf(ya[complete.cases(ya$Total.N),]$Total.N)
-pacf(ya[complete.cases(ya$Total.N),]$Total.N)
-
-```
-
-#Histograms of Phospherous
-PH looks to be very right skewed. With many outliers.
+After removing outliers, we see that Turbulance levels are different across the sites.
 ```{r}
-qplot(y=ya$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
-ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density()
-ggplot(ya, aes(x=Total.P..mg.L.as.P., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
-
-ts.plot(ya$Total.P..mg.L.as.P.)
-ts.plot(diff(ya$Total.P..mg.L.as.P.))
-adf.test(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
-acf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
-pacf(ya[complete.cases(ya$Total.P..mg.L.as.P.),]$Total.P..mg.L.as.P.)
+ss_upper_limit = quantile(ya$Susp..Solids..mg.L., na.rm=T)[4] + 1.5*IQR(ya$Susp..Solids..mg.L.,na.rm=T)
+ya_ss_no = subset(ya, Susp..Solids..mg.L. < ss_upper_limit) 
+ggplot(ya_ss_no, aes(x=Susp..Solids..mg.L.)) + geom_density()
+ggplot(ya_ss_no, aes(x=Susp..Solids..mg.L., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
+ggplot(ya_ss_no, aes(x=Turb...NTU.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 ```
 
-###########################################################
-Let's remove outliers and check the impact of doing this on N and P.
-We see a more normal distribution
-```{r}
-n_upper_limit = quantile(ya$Total.N, na.rm=T)[4] + 1.5*IQR(ya$Total.N,na.rm=T)
-p_upper_limit = quantile(ya$Total.P..mg.L.as.P., na.rm=T)[4] + 1.5*IQR(ya$Total.P..mg.L.as.P.,na.rm=T)
 
-ya_n_no = subset(ya, Total.N <n_upper_limit) 
-ya_p_no = subset(ya, Total.P..mg.L.as.P. < p_upper_limit) 
-ya_np_no = subset(ya, Total.N < n_upper_limit & Total.P..mg.L.as.P. < p_upper_limit) 
 
-qplot(y=ya_n_no$Total.N, x= 1, geom = "boxplot")
-ggplot(ya_n_no, aes(x=Total.N)) + geom_density()
-ggplot(ya_n_no, aes(x=Total.N, fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya_n_no, aes(x=Total.N)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 
-qplot(y=ya_p_no$Total.P..mg.L.as.P., x= 1, geom = "boxplot")
-ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P.)) + geom_density()
-ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P., fill = New.Site.Code...post.Jun.2007.)) + geom_density()
-ggplot(ya_p_no, aes(x=Total.P..mg.L.as.P.)) + geom_density() + facet_wrap(~New.Site.Code...post.Jun.2007.)
 
-```
+
+
 
 ########################################################
 Let's not 
 ```{r}
-dim(ya)
-dim(rain)
-ya$Date
-rain$date
-
-aa = merge(ya,rain,by = "Date" )
-bb = merge(wq,rain,by = "Date" )
-
-head(aa,20)
-
-plot(rain$Date,rain$Rainfall.amount..millimetres.)
-hist(rain$Month)
-min(rain$Date)
-str(rain)
 
 
-cor(aa$ma3, aa$Turb...NTU., use="complete.obs", method = "pearson")
-cor(aa$ma5, aa$Turb...NTU., use="complete.obs", method = "pearson")
-cor(aa$ma10, aa$Turb...NTU., use="complete.obs", method = "pearson")
+cor(wq$ma2, wq$Turb...NTU., use="complete.obs", method = "pearson")
+cor(wq$ma3, wq$Turb...NTU., use="complete.obs", method = "pearson")
+cor(wq$ma5, wq$Turb...NTU., use="complete.obs", method = "pearson")
+cor(wq$ma10, wq$Turb...NTU., use="complete.obs", method = "pearson")
 
-cor(aa$ma3, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
-cor(aa$ma5, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
-cor(aa$ma10, aa$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(wq$ma2, wq$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(wq$ma3, wq$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(wq$ma5, wq$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(wq$ma10, wq$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
 
-cor(bb$ma3, bb$Turb...NTU., use="complete.obs", method = "pearson")
-cor(bb$ma5, bb$Turb...NTU., use="complete.obs", method = "pearson")
-cor(bb$ma10, bb$Turb...NTU., use="complete.obs", method = "pearson")
+cor(ya$Rainfall.amount..millimetres., ya$Turb...NTU., use="complete.obs", method = "spearman")
+cor(ya$ma2, ya$Turb...NTU., use="complete.obs", method = "spearman")
+cor(ya$ma3, ya$Turb...NTU., use="complete.obs", method = "spearman")
+cor(ya$ma5, ya$Turb...NTU., use="complete.obs", method = "spearman")
+cor(ya$ma10, ya$Turb...NTU., use="complete.obs", method = "spearman")
 
-cor(bb$ma3, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
-cor(bb$ma5, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
-cor(bb$ma10, bb$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(ya$ma3, ya$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(ya$ma5, ya$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
+cor(ya$ma10, ya$Susp..Solids..mg.L., use="complete.obs", method = "pearson")
 
-cor(aa$ma3, aa$Total.N, use="complete.obs", method = "spearman")
-cor(aa$ma5, aa$Total.N, use="complete.obs", method = "spearman")
-cor(aa$ma10, aa$Total.N, use="complete.obs", method = "spearman")
+cor(wq$ma3, wq$Total.N, use="complete.obs", method = "spearman")
+cor(wq$ma5, wq$Total.N, use="complete.obs", method = "spearman")
+cor(wq$ma10, wq$Total.N, use="complete.obs", method = "spearman")
 
-cor(aa$ma3, aa$E..coli..MF., use="complete.obs", method = "spearman")
-cor(aa$ma5, aa$E..coli..MF., use="complete.obs", method = "spearman")
-cor(aa$ma10, aa$E..coli..MF., use="complete.obs", method = "spearman")
+cor(wq$ma3, wq$E..coli..MF., use="complete.obs", method = "spearman")
+cor(wq$ma5, wq$E..coli..MF., use="complete.obs", method = "spearman")
+cor(wq$ma10, wq$E..coli..MF., use="complete.obs", method = "spearman")
 
-plot(aa$Date,aa$Rainfall.amount..millimetres., type='l', ylim = c(0,20))
-lines(aa$Date,aa$Turb...NTU.)
 ```
 
 
@@ -244,45 +259,26 @@ lines(aa$Date,aa$Turb...NTU.)
 names(ya[,c(11,12,13,14,15,20,22,24,25:31,33)])
 names(ya)
 
-cor(wq$Turb...NTU., wq$distance, use="complete.obs", method = "spearman")
-cor(wq$Susp..Solids..mg.L., wq$distance, use="complete.obs", method = "spearman")
-cor(wq$Total.N, wq$distance, use="complete.obs", method = "spearman")
-cor(wq$Total.P..mg.L.as.P., wq$distance, use="complete.obs", method = "spearman")
-
-cor(wq$Total.N, wq$Total.P..mg.L.as.P., use="complete.obs", method = "spearman")
-
-
-
-cor(wq$Total.N, wq$Total.P..mg.L.as.P., use="complete.obs", method = "spearman")
-
-
-
-plot(wq$New.Site.Code...post.Jun.2007.,wq$distance)
+hclust(ya[,c(11,12,13,14,15,20,22,24,25:31,33)],na.action = 
 
 ```
 
 
 
 ```{r}
-names(ya[,c(11,12,13,14,15,20)])
-
-kk = ya[,c(11,12,13,14,15,20)]
-kk = na.omit(kk)
-
-k = kmeans(kk,3)
-plotcl(k)
-
-names(ya[,c(11,12,13,14,15,20)])
-
-kk = ya[,c(11,12,13,14,15,20)]
-kk = na.omit(kk)
-
+aa = lm(E..coli..MF. ~ scale(Temp...C.) + scale(pH) + scale(DO....sat..) + scale(EC..uS.cm.) + scale(Turb...NTU.) + scale(Susp..Solids..mg.L.) + scale(Total.N) +  scale(Total.P..mg.L.as.P.) + scale(ma2) + scale(ma3) + scale(ma5) + scale(ma10) + scale(distance), data = ya )
+summary(aa)
+ya$m
 names(ya)
-dim(ya)
-
-head(ya)
-
-knn(train, test, ya, k = 3, prob=TRUE)
 ```
+
+```{r}
+aa = lm(E..coli..MF. ~ scale(Temp...C.) + scale(pH) + scale(Susp..Solids..mg.L.) + scale(Total.N) +  scale(Total.P..mg.L.as.P.) + scale(ma2r) + scale(ma3r) + scale(ma5r) + scale(ma10r) + scale(ma2t) + scale(ma3t) + scale(ma5t) + scale(ma10t) + scale(ma2s) + scale(ma3s) + scale(ma5s) + scale(ma10s) + scale(Rainfall.amount..millimetres.) + scale(Daily.global.solar.exposure..MJ.m.m.) + scale(Maximum.temperature..Degree.C.), data = ya )
+summary(aa)
+
+
+knn(aa)
+```
+
 
 
